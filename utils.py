@@ -1,13 +1,17 @@
 # utils.py
+
 import pandas as pd
 import numpy as np
 from scipy.stats import ttest_ind
 from statsmodels.stats.multitest import multipletests
-from genai import generate_text, display_tweet
+from genai import GenAI
 import requests
 from bs4 import BeautifulSoup
+import os
 
-# Compute engagement
+# Initialize GenAI with API key from environment
+openai_api_key = os.getenv("OPENAI_API_KEY")
+genai = GenAI(openai_api_key=openai_api_key)
 
 def compute_engagement(df):
     df = df.copy()
@@ -15,15 +19,11 @@ def compute_engagement(df):
     df = df.sort_values(by='engagement', ascending=False)
     return df
 
-# AI engagement analysis string
-
 def get_engagement_string(df):
     tweets_summary = df[['text', 'engagement']].head(10).to_dict(orient='records')
     prompt = f"Analyze the following tweets based on their text and engagement, and summarize what drives engagement:\n\n{tweets_summary}\n\nProvide your analysis:"
-    engagement_analysis = generate_text(prompt)
+    engagement_analysis = genai.generate_text(prompt)
     return engagement_analysis
-
-# Keyword engagement analysis
 
 def compute_keyword_engagement(df, keywords_string):
     keywords = [kw.strip().lower() for kw in keywords_string.split(',')]
@@ -35,7 +35,6 @@ def compute_keyword_engagement(df, keywords_string):
         engagement_true = df.loc[has_keyword, 'engagement'].mean()
         engagement_false = df.loc[~has_keyword, 'engagement'].mean()
 
-        # Perform t-test
         t_stat, pvalue = ttest_ind(df.loc[has_keyword, 'engagement'],
                                    df.loc[~has_keyword, 'engagement'],
                                    equal_var=False, nan_policy='omit')
@@ -48,14 +47,10 @@ def compute_keyword_engagement(df, keywords_string):
         })
 
     df_results = pd.DataFrame(results)
-
-    # Benjamini-Hochberg correction
     corrected = multipletests(df_results['pvalue'], method='fdr_bh')
     df_results['pvalue_bh'] = corrected[1]
 
     return df_results[['keyword', 'pvalue_bh', 'engagement_false', 'engagement_true']]
-
-# Persona tweet generation
 
 def create_persona_tweet(topic, df, engagement_analysis_string):
     if topic.startswith('http://') or topic.startswith('https://'):
@@ -71,7 +66,7 @@ def create_persona_tweet(topic, df, engagement_analysis_string):
         f"Create an engaging tweet about the following topic or content:\n\n{topic_content}\n\nTweet:"
     )
 
-    tweet_text = generate_text(prompt)
-    tweet_html = display_tweet(tweet_text)
+    tweet_text = genai.generate_text(prompt)
+    tweet_html = genai.display_tweet(tweet_text)
 
     return tweet_html
